@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENGLSH — English Training</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  *{box-sizing:border-box}
+  html,body{background:#0F0F0F;color:#F0F0F0;margin:0;padding:0;min-height:100%;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-track{background:#0F0F0F}
+  ::-webkit-scrollbar-thumb{background:#2A2A2A;border-radius:3px}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+  @keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.04)}100%{transform:scale(1)}}
+  .fade-in{animation:fadeIn 0.2s ease-out}
+  .shake{animation:shake 0.35s ease-out}
+  .pop{animation:pop 0.2s ease-out}
+  button{cursor:pointer}
+  .mono{font-family:'JetBrains Mono','Fira Code','Courier New',monospace}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        base: '#0F0F0F', surface: '#161616', elevated: '#1E1E1E',
+        border: '#2A2A2A', muted: '#555555', secondary: '#9A9A9A', primary: '#F0F0F0',
+      }
+    }
+  }
+}
+
+function sm2Update(repetitions, interval, easeFactor, quality) {
+  const q = [0, 2, 4, 5][quality] ?? 4;
+  if (q < 3) return { repetitions: 0, interval: 1, easeFactor: Math.max(1.3, easeFactor - 0.2) };
+  const newEF = Math.max(1.3, easeFactor + 0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+  const newInterval = repetitions === 0 ? 1 : repetitions === 1 ? 6 : Math.round(interval * easeFactor);
+  return { repetitions: repetitions + 1, interval: newInterval, easeFactor: newEF };
+}
+function daysFromNow(n) { return Date.now() + n * 86400000; }
+function isDue(ts) { return Date.now() >= ts; }
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+const EXERCISES = [
+  { id:'e01', type:'complete-sentence', level:'B1', category:'grammar', subcategory:'since-vs-for', question:"I've been working here _____ three years.", options:['for','since','during','from'], correctAnswer:0, explanation:'"For" is used with a duration (three years). "Since" marks a specific point in time (2021, last Monday).', nativeTip:'Ask yourself: "a period of ___"? → for. A specific moment? → since.' },
+  { id:'e02', type:'detect-mistake', level:'B1', category:'grammar', subcategory:'since-vs-for', question:"She's been living in Madrid [since] five years.", options:['since','for'], correctAnswer:1, explanation:'"Five years" is a duration, not a point in time. Use "for".' },
+  { id:'e03', type:'complete-sentence', level:'B1', category:'grammar', subcategory:'since-vs-for', question:"He hasn't eaten anything _____ this morning.", options:['since','for','during','from'], correctAnswer:0, explanation:'"This morning" is a specific point in time, so use "since".' },
+  { id:'e04', type:'natural-vs-unnatural', level:'B2', category:'naturalness', subcategory:'collocations', question:'Which sounds more natural?', options:["I'm very agree with you.","I totally agree with you."], correctAnswer:1, explanation:'"Agree" is a verb, not an adjective — "very" can\'t modify it. Use "totally", "completely", or "fully agree".', nativeTip:'Natives say: I totally agree / I couldn\'t agree more / I completely agree.' },
+  { id:'e05', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'present-perfect-vs-past-simple', question:"I _____ my keys. Can you help me find them?", options:['lost','have lost','was losing','lose'], correctAnswer:1, explanation:'Use Present Perfect when the past event still affects the present — the keys are still missing now.', nativeTip:'If the result matters NOW, use Present Perfect.' },
+  { id:'e06', type:'detect-mistake', level:'B1', category:'grammar', subcategory:'present-perfect-vs-past-simple', question:"I have seen that movie [last week].", options:['last week','the previous week'], correctAnswer:0, explanation:'"Last week" is a finished, specific time reference — it forces Past Simple: "I saw that movie last week".' },
+  { id:'e07', type:'choose-best', level:'B2', category:'grammar', subcategory:'present-perfect-vs-past-simple', question:'Context: someone just arrived at the office. Which is correct?', options:["Did you have breakfast?","Have you had breakfast?","Were you having breakfast?"], correctAnswer:1, explanation:'No specific time is mentioned and the question relates to the current moment — use Present Perfect.' },
+  { id:'e08', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'present-perfect-vs-past-simple', question:"We _____ in this house since 2018.", options:['live','lived','have lived','are living'], correctAnswer:2, explanation:'The action started in the past and continues now → Present Perfect + "since".' },
+  { id:'e09', type:'natural-vs-unnatural', level:'B2', category:'naturalness', subcategory:'false-friends', question:'Translate: "Actualmente trabajo en Google."', options:["Actually I work at Google.","Currently I work at Google."], correctAnswer:1, explanation:'"Actually" means "en realidad / de hecho", not "actualmente". "Currently" = "actualmente/en este momento".', nativeTip:'"Actually" is a false friend! "I work at Google, actually" = correction or emphasis, not time.' },
+  { id:'e10', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'conditionals', question:"If I _____ more time, I would travel more.", options:['have','had','would have','will have'], correctAnswer:1, explanation:'Conditional Type 2 (hypothetical present/future): If + Past Simple, would + infinitive.' },
+  { id:'e11', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'conditionals', question:"If it _____ tomorrow, we'll cancel the trip.", options:['rains','rained','will rain','would rain'], correctAnswer:0, explanation:'Conditional Type 1 (real possibility): If + Present Simple, will + infinitive.' },
+  { id:'e12', type:'choose-best', level:'C1', category:'grammar', subcategory:'conditionals', question:'Context: talking about a past regret.', options:["If I studied harder, I would pass the exam.","If I had studied harder, I would have passed.","If I would study harder, I passed."], correctAnswer:1, explanation:'Conditional Type 3 (impossible past): If + Past Perfect, would have + past participle.' },
+  { id:'e13', type:'natural-vs-unnatural', level:'B2', category:'naturalness', subcategory:'false-friends', question:'Which is the correct translation of "Eventualmente lo terminé"?', options:["Eventually I finished it.","I eventually finished it."], correctAnswer:1, explanation:'Both are grammatically fine, but "I eventually finished it" is more natural word order. Note: "eventually" ≠ "eventualmente" (which means "possibly"). "Eventually" = "finalmente/al final".' },
+  { id:'e14', type:'detect-mistake', level:'B2', category:'grammar', subcategory:'articles', question:"She wants to become [a] engineer.", options:['a','an'], correctAnswer:1, explanation:'"Engineer" starts with a vowel sound /ɛ/ → use "an". Rule: use "an" before vowel sounds (not letters).' },
+  { id:'e15', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'articles', question:"Can you play _____ piano?", options:['the','a','—','an'], correctAnswer:0, explanation:'Use "the" with musical instruments: play the piano, the guitar, the violin.' },
+  { id:'e16', type:'complete-sentence', level:'B1', category:'grammar', subcategory:'articles', question:"I had _____ coffee and _____ sandwich for breakfast.", options:['a / a','the / the','— / a','a / the'], correctAnswer:0, explanation:'First mention of countable nouns → use "a/an". "Coffee" here is being used countably (one coffee).' },
+  { id:'e17', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'prepositions-time', question:"The meeting is _____ Monday _____ 3pm.", options:['on / at','in / at','at / on','on / in'], correctAnswer:0, explanation:'"On" for days, "at" for specific times.' },
+  { id:'e18', type:'detect-mistake', level:'B1', category:'grammar', subcategory:'prepositions-time', question:"I'll see you [in] the morning.", options:['in','in the'], correctAnswer:1, explanation:'"In the morning" is correct — always use the article: in the morning / in the afternoon / in the evening. Exception: "at night".' },
+  { id:'e19', type:'natural-vs-unnatural', level:'B2', category:'naturalness', subcategory:'collocations', question:'Which is natural?', options:["I did a mistake.","I made a mistake."], correctAnswer:1, explanation:'"Make a mistake" is the fixed collocation. Use "make" for: make a decision, make an effort, make progress. Use "do" for: do homework, do exercise, do business.', nativeTip:'Make = create/produce. Do = carry out an activity.' },
+  { id:'e20', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'modal-verbs', question:"You _____ be tired after such a long flight.", options:['must','should','might','have to'], correctAnswer:0, explanation:'"Must" expresses logical deduction/certainty based on evidence. "You must be tired" = I\'m certain you are.' },
+  { id:'e21', type:'choose-best', level:'B2', category:'grammar', subcategory:'modal-verbs', question:'What is the rule about helmets? (obligation)', options:["You should wear a helmet.","You must wear a helmet.","You might wear a helmet."], correctAnswer:1, explanation:'"Must" = strong obligation (often a rule/law). "Should" = advice/recommendation, not a strict rule.' },
+  { id:'e22', type:'natural-vs-unnatural', level:'C1', category:'naturalness', subcategory:'collocations', question:'Which sounds natural?', options:["The news was very shocking.","The news was very surprised."], correctAnswer:0, explanation:'"Shocking" describes the news (it causes shock). "Surprised" describes a person\'s reaction. Common error: mixing -ing/-ed adjectives.', nativeTip:'The movie was boring. I was bored. The news is shocking. I\'m shocked.' },
+  { id:'e23', type:'detect-mistake', level:'B2', category:'naturalness', subcategory:'collocations', question:"I'm [very] interested in learning more.", options:['very','very / really'], correctAnswer:0, explanation:'Actually "very interested" IS correct — "interested" is a true adjective here. But "really interested" sounds more natural in speech. Both are fine.', nativeTip:null },
+  { id:'e24', type:'translation', level:'B2', category:'naturalness', subcategory:'translation', question:'Translate naturally: "Me enteré de que renunció."', options:["I found out that he resigned.","I informed myself that he resigned.","I found that he resigned."], correctAnswer:0, explanation:'"Enterarse" = "to find out". "Informed myself" is a literal mistranslation. "I found that" means "I discovered/determined" in a research context.', nativeTip:'Colloquially: "I heard he quit." — even more natural!' },
+  { id:'e25', type:'translation', level:'B1', category:'naturalness', subcategory:'translation', question:'Translate naturally: "Depende de lo que digas."', options:["It depends of what you say.","It depends on what you say.","It depends from what you say."], correctAnswer:1, explanation:'"Depend" always takes "on" in English, not "of" or "from". This is a classic mistake for Spanish speakers.', nativeTip:'"It depends on..." — memorize this preposition.' },
+  { id:'e26', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'present-perfect-vs-past-simple', question:"This is the best film I _____ ever seen.", options:['have','had','was','am'], correctAnswer:0, explanation:'Superlative + "ever" triggers Present Perfect: "the best I have ever seen".' },
+  { id:'e27', type:'natural-vs-unnatural', level:'B1', category:'naturalness', subcategory:'false-friends', question:'Translate: "Es una persona muy sensible."', options:["She's a very sensible person.","She's a very sensitive person."], correctAnswer:1, explanation:'"Sensible" in English = "sensato/razonable" (practical). "Sensitive" = "sensible/emotivo". Another classic false friend!', nativeTip:'"Sensible" advice = practical advice. A "sensitive" person = someone who feels deeply.' },
+  { id:'e28', type:'complete-sentence', level:'C1', category:'grammar', subcategory:'conditionals', question:"Had I known about the problem, I _____ sooner.", options:['would have called','would call','had called','called'], correctAnswer:0, explanation:'This is an inverted Conditional 3 (formal/written). "Had I known" = "If I had known". Result: "would have + past participle".' },
+  { id:'e29', type:'choose-best', level:'B2', category:'grammar', subcategory:'modal-verbs', question:"She _____ be at home — I saw her car outside.", options:["must","should","can","might"], correctAnswer:0, explanation:'"Must" for strong logical deduction. You have evidence (the car) → "must be".' },
+  { id:'e30', type:'natural-vs-unnatural', level:'B2', category:'naturalness', subcategory:'collocations', question:'Which is correct?', options:["Do you have the time?","Have you the time?"], correctAnswer:0, explanation:'In modern English, "Do you have...?" is standard. "Have you...?" (without do) sounds very formal/archaic in most contexts.', nativeTip:'British English sometimes uses "Have you got the time?" — also natural.' },
+  { id:'e31', type:'detect-mistake', level:'B2', category:'grammar', subcategory:'articles', question:"Life is [a] short.", options:['a','—'], correctAnswer:1, explanation:'"Life" used as a general concept takes no article: "Life is short." Use zero article for abstract/general nouns.' },
+  { id:'e32', type:'translation', level:'B2', category:'naturalness', subcategory:'translation', question:'Translate: "Fue un placer conocerte."', options:["It was a pleasure to know you.","It was a pleasure to meet you.","It was nice knowing you."], correctAnswer:1, explanation:'"Conocer" in a first meeting context = "to meet". "To know" = conocer de manera ongoing. "It was a pleasure meeting you" is also very natural.', nativeTip:'"Nice to meet you" (when meeting) vs "Nice knowing you" (when saying goodbye forever — sometimes sarcastic!)' },
+  { id:'e33', type:'complete-sentence', level:'B2', category:'grammar', subcategory:'since-vs-for', question:"I've known her _____ we were children.", options:['since','for','during','from'], correctAnswer:0, explanation:'"Since we were children" is a point in time (clause). Use "since" before clauses and specific time references.' },
+  { id:'e34', type:'natural-vs-unnatural', level:'C1', category:'naturalness', subcategory:'register', question:'In a formal email, which is better?', options:["I'm writing to ask about the job.","I am writing to enquire about the position."], correctAnswer:1, explanation:'Formal register: "enquire" (not "ask"), "position" (not "job"), no contractions ("I am" not "I\'m").', nativeTip:'Formal: enquire, position, regarding, I would like to. Informal: ask, job, about, I want to.' },
+  { id:'e35', type:'choose-best', level:'B2', category:'grammar', subcategory:'prepositions-time', question:"She graduated _____ 2019.", options:["in","on","at","—"], correctAnswer:0, explanation:'Use "in" for years, months, and seasons: in 2019, in March, in summer.' },
+];
+
+const PHRASAL_VERBS = [
+  { id:'pv01', verb:'give', particle:'up', meaning:'to stop doing something; to quit', translation:'rendirse, abandonar', examples:["Don't give up — you're almost there.","She gave up smoking last year."], level:'B1', category:'emotions', separable:true },
+  { id:'pv02', verb:'set', particle:'up', meaning:'to organize, establish, or start something', translation:'establecer, configurar, montar', examples:["They set up a new company in 2020.","Can you set up a meeting for Thursday?"], level:'B1', category:'work', separable:true },
+  { id:'pv03', verb:'carry', particle:'out', meaning:'to perform or complete a task', translation:'llevar a cabo, realizar', examples:["The team carried out the research.","We need to carry out a full inspection."], level:'B2', category:'work', separable:true },
+  { id:'pv04', verb:'put', particle:'off', meaning:'to postpone or delay', translation:'posponer, aplazar', examples:["Don't put off the meeting again.","She keeps putting it off."], level:'B1', category:'work', separable:true },
+  { id:'pv05', verb:'come', particle:'up with', meaning:'to think of or produce an idea or solution', translation:'ocurrirse, idear', examples:["Who came up with that idea?","We need to come up with a plan."], level:'B2', category:'work', separable:false },
+  { id:'pv06', verb:'look', particle:'into', meaning:'to investigate or examine', translation:'investigar, examinar', examples:["We'll look into the problem.","Can you look into this complaint?"], level:'B2', category:'work', separable:false },
+  { id:'pv07', verb:'hand', particle:'in', meaning:'to submit or give something to someone in authority', translation:'entregar (tareas, reportes)', examples:["Please hand in your assignments by Friday.","He handed in his resignation."], level:'B1', category:'work', separable:true },
+  { id:'pv08', verb:'take', particle:'on', meaning:'to accept responsibility; to hire', translation:'asumir, contratar', examples:["She took on too many projects.","The company took on 50 new employees."], level:'B2', category:'work', separable:true },
+  { id:'pv09', verb:'bring', particle:'up', meaning:'to mention a topic in conversation', translation:'sacar a colación, mencionar', examples:["He brought up the salary issue.","Why did you bring that up now?"], level:'B2', category:'communication', separable:true },
+  { id:'pv10', verb:'point', particle:'out', meaning:'to indicate or draw attention to something', translation:'señalar, indicar', examples:["She pointed out an error in the report.","Let me point out a few things."], level:'B2', category:'communication', separable:true },
+  { id:'pv11', verb:'go', particle:'over', meaning:'to review or check carefully', translation:'revisar, repasar', examples:["Let's go over the details again.","She went over the contract carefully."], level:'B1', category:'communication', separable:false },
+  { id:'pv12', verb:'cut', particle:'off', meaning:'to interrupt; to disconnect', translation:'cortar, interrumpir', examples:["The call was cut off.","She cut me off mid-sentence."], level:'B2', category:'communication', separable:true },
+  { id:'pv13', verb:'calm', particle:'down', meaning:'to become or make less upset or excited', translation:'calmarse, tranquilizarse', examples:["Calm down — everything will be fine.","I need to calm down before I reply."], level:'B1', category:'emotions', separable:true },
+  { id:'pv14', verb:'cheer', particle:'up', meaning:'to feel happier; to make someone feel better', translation:'animarse, animar a alguien', examples:["Cheer up! It's not that bad.","I brought flowers to cheer her up."], level:'B1', category:'emotions', separable:true },
+  { id:'pv15', verb:'put up', particle:'with', meaning:'to tolerate something unpleasant', translation:'aguantar, tolerar', examples:["I can't put up with this noise.","She put up with a lot of stress."], level:'B2', category:'emotions', separable:false },
+  { id:'pv16', verb:'get', particle:'over', meaning:'to recover from an illness, loss, or disappointment', translation:'superar, recuperarse', examples:["She got over the breakup quickly.","He never got over losing that job."], level:'B2', category:'emotions', separable:false },
+  { id:'pv17', verb:'look forward', particle:'to', meaning:'to feel excited about something upcoming', translation:'tener ganas de, esperar con entusiasmo', examples:["I'm looking forward to the trip.","We look forward to hearing from you."], level:'B1', category:'emotions', separable:false },
+  { id:'pv18', verb:'fall', particle:'out', meaning:'to have an argument and stop being friendly', translation:'pelearse, distanciarse', examples:["They fell out over money.","We fell out years ago but recently reconciled."], level:'B2', category:'relationships', separable:false },
+  { id:'pv19', verb:'make', particle:'up', meaning:'to resolve a disagreement; to invent a story', translation:'reconciliarse; inventar', examples:["They argued but made up the next day.","He made up an excuse for being late."], level:'B1', category:'relationships', separable:true },
+  { id:'pv20', verb:'split', particle:'up', meaning:'to end a romantic relationship', translation:'separarse, romper', examples:["They split up after two years.","Why did they split up?"], level:'B1', category:'relationships', separable:false },
+  { id:'pv21', verb:'take', particle:'off', meaning:'to leave quickly; (plane) to depart; to remove clothing', translation:'despegar; quitarse ropa; irse rápido', examples:["The plane took off on time.","He took off his jacket."], level:'B1', category:'movement', separable:true },
+  { id:'pv22', verb:'show', particle:'up', meaning:'to arrive, often unexpectedly', translation:'aparecer, presentarse', examples:["She showed up an hour late.","He didn't show up to the meeting."], level:'B1', category:'movement', separable:false },
+  { id:'pv23', verb:'end', particle:'up', meaning:'to finally be in a situation or place', translation:'terminar, acabar haciendo algo', examples:["We ended up staying till midnight.","She ended up getting the job."], level:'B1', category:'movement', separable:false },
+  { id:'pv24', verb:'figure', particle:'out', meaning:'to understand or solve something', translation:'descubrir, entender, resolver', examples:["I can't figure out how to do this.","She figured out the answer."], level:'B1', category:'communication', separable:true },
+  { id:'pv25', verb:'run out', particle:'of', meaning:'to have no more of something', translation:'quedarse sin', examples:["We ran out of coffee.","I'm running out of time."], level:'B1', category:'work', separable:false },
+  { id:'pv26', verb:'keep up', particle:'with', meaning:'to stay at the same level or pace', translation:'mantenerse al día, seguir el ritmo', examples:["It's hard to keep up with the news.","Can you keep up with the class?"], level:'B2', category:'work', separable:false },
+  { id:'pv27', verb:'back', particle:'up', meaning:'to support; to make a copy of data', translation:'respaldar, hacer backup', examples:["The data should be backed up daily.","I'll back you up on this."], level:'B2', category:'work', separable:true },
+  { id:'pv28', verb:'turn', particle:'down', meaning:'to refuse or reject an offer', translation:'rechazar', examples:["She turned down the job offer.","Why did he turn it down?"], level:'B2', category:'work', separable:true },
+  { id:'pv29', verb:'follow', particle:'up', meaning:'to take further action on something', translation:'hacer seguimiento, dar seguimiento', examples:["I'll follow up with an email.","Did you follow up on that lead?"], level:'B2', category:'work', separable:true },
+  { id:'pv30', verb:'deal', particle:'with', meaning:'to handle or manage a situation or person', translation:'manejar, lidiar con, tratar', examples:["How do you deal with stress?","She deals with complaints professionally."], level:'B1', category:'work', separable:false },
+];
+
+const PV_EXERCISES = [
+  { id:'pve01', type:'fill-blank', pvId:'pv01', question:"Don't _____ _____! You're almost at the finish line.", answer:'give up', options:['give up','put off','end up','take off'], explanation:'"Give up" = to stop trying.' },
+  { id:'pve02', type:'choose-particle', pvId:'pv02', question:'We need to set _____ a meeting for next week.', answer:'up', options:['up','out','in','off'], explanation:'"Set up" a meeting = to organize/schedule it.' },
+  { id:'pve03', type:'fill-blank', pvId:'pv04', question:"Stop _____ _____ the decision — we need an answer today.", answer:'putting off', options:['putting off','carrying out','handing in','following up'], explanation:'"Put off" = to delay/postpone.' },
+  { id:'pve04', type:'fill-blank', pvId:'pv05', question:"Who _____ _____ _____ this brilliant idea?", answer:'came up with', options:['came up with','looked into','dealt with','set up'], explanation:'"Come up with" = to think of/produce an idea.' },
+  { id:'pve05', type:'choose-particle', pvId:'pv15', question:"I can't put _____ _____ this noise anymore.", answer:'up with', options:['up with','off with','on with','out with'], explanation:'"Put up with" = to tolerate (3-word phrasal verb, inseparable).' },
+  { id:'pve06', type:'fill-blank', pvId:'pv17', question:"I'm really _____ _____ _____ the weekend.", answer:'looking forward to', options:['looking forward to','putting up with','keeping up with','running out of'], explanation:'"Look forward to" = to be excited about. Always followed by noun or -ing.' },
+  { id:'pve07', type:'choose-particle', pvId:'pv09', question:'He brought _____ an interesting point about the budget.', answer:'up', options:['up','out','in','off'], explanation:'"Bring up" = to mention a topic.' },
+  { id:'pve08', type:'fill-blank', pvId:'pv30', question:"She's great at _____ _____ difficult clients.", answer:'dealing with', options:['dealing with','looking into','carrying out','handing in'], explanation:'"Deal with" = to handle/manage (inseparable).' },
+  { id:'pve09', type:'choose-particle', pvId:'pv16', question:"It took her months to get _____ the breakup.", answer:'over', options:['over','off','up','out'], explanation:'"Get over" = to recover from something difficult.' },
+  { id:'pve10', type:'fill-blank', pvId:'pv25', question:"We've _____ _____ _____ milk — can you buy some?", answer:'run out of', options:['run out of','kept up with','put up with','come up with'], explanation:'"Run out of" = to have no more of something.' },
+];
+
+const VOCAB_DATA = [
+  { id:'v01', word:'subtle', phonetic:'/ˈsʊtl/', translation:'sutil', definition:'Not obvious; making fine distinctions', examples:["There's a subtle difference between the two.","Her humor is subtle but effective."], level:'B2', tag:'adjectives', commonMistake:'Silent "b": /ˈsʊtl/ not /ˈsʊbtl/' },
+  { id:'v02', word:'acknowledge', phonetic:'/əkˈnɒlɪdʒ/', translation:'reconocer, admitir', definition:'To accept or admit the truth or existence of something', examples:["She acknowledged the mistake.","The report acknowledges several problems."], level:'B2', tag:'verbs' },
+  { id:'v03', word:'ambiguous', phonetic:'/æmˈbɪgʰjuəs/', translation:'ambiguo', definition:'Open to more than one interpretation; unclear', examples:["His answer was ambiguous.","The contract contained ambiguous language."], level:'C1', tag:'adjectives' },
+  { id:'v04', word:'compelling', phonetic:'/kəmˈpelɪŋ/', translation:'convincente, irresistible', definition:'Evoking interest, attention, or admiration; very persuasive', examples:["She made a compelling argument.","The evidence is compelling."], level:'C1', tag:'adjectives' },
+  { id:'v05', word:'dilemma', phonetic:'/dɪˈlemə/', translation:'dilema', definition:'A situation requiring a choice between equally difficult options', examples:["I was in a dilemma about whether to go.","The ethical dilemma had no easy answer."], level:'B2', tag:'nouns' },
+  { id:'v06', word:'feasible', phonetic:'/ˈfiːzəbl/', translation:'factible, viable', definition:'Possible and practical to achieve', examples:["Is this plan feasible?","A merger isn't feasible right now."], level:'C1', tag:'adjectives' },
+  { id:'v07', word:'insight', phonetic:'/ˈɪnsɑɪt/', translation:'perspicacia, comprensión profunda', definition:'An accurate and deep understanding of something', examples:["This gives us valuable insight.","She has great insight into human behavior."], level:'B2', tag:'nouns' },
+  { id:'v08', word:'meticulous', phonetic:'/mɪˈtɪkjʊləs/', translation:'meticuloso', definition:'Showing great attention to detail; very careful', examples:["He is meticulous about his work.","A meticulous review of the data."], level:'C1', tag:'adjectives' },
+  { id:'v09', word:'nuance', phonetic:'/ˈnjuːɑːns/', translation:'matiz', definition:'A subtle difference in meaning, expression, or sound', examples:["There are important nuances here.","She missed the nuance of the argument."], level:'C1', tag:'nouns' },
+  { id:'v10', word:'pragmatic', phonetic:'/præɡˈmætɪk/', translation:'pragmático', definition:'Dealing with things practically rather than theoretically', examples:["We need a pragmatic solution.","She takes a pragmatic approach."], level:'C1', tag:'adjectives' },
+  { id:'v11', word:'skeptical', phonetic:'/ˈskeptɪkl/', translation:'escéptico', definition:'Not easily convinced; having doubts', examples:["I'm skeptical about his claims.","The scientists were skeptical of the results."], level:'B2', tag:'adjectives' },
+  { id:'v12', word:'substantial', phonetic:'/səbˈstænʃl/', translation:'sustancial, considerable', definition:'Of considerable importance, size, or worth', examples:["There was a substantial improvement.","She earned a substantial salary."], level:'B2', tag:'adjectives' },
+  { id:'v13', word:'underlying', phonetic:'/ˌʊndəˈlaɪɪŋ/', translation:'subyacente, fundamental', definition:'Being beneath or at the basis of something', examples:["The underlying cause is still unknown.","What's the underlying problem here?"], level:'C1', tag:'adjectives' },
+  { id:'v14', word:'versatile', phonetic:'/ˈvɜːsətaɪl/', translation:'versátil', definition:'Able to adapt to many different functions or activities', examples:["She's a versatile actor.","This is a versatile ingredient."], level:'B2', tag:'adjectives' },
+  { id:'v15', word:'inevitable', phonetic:'/ɪnˈevɪtəbl/', translation:'inevitable', definition:'Certain to happen; unavoidable', examples:["Conflict was inevitable.","Change is inevitable in any organization."], level:'B2', tag:'adjectives' },
+  { id:'v16', word:'transparent', phonetic:'/trænsˈpærənt/', translation:'transparente, claro', definition:'Easy to perceive; open and honest', examples:["The process should be transparent.","She was transparent about her intentions."], level:'B2', tag:'adjectives' },
+  { id:'v17', word:'rhetoric', phonetic:'/ˈretərɪk/', translation:'retórica', definition:'Persuasive speaking or writing; sometimes: empty or exaggerated language', examples:["The speech was full of political rhetoric.","We need action, not rhetoric."], level:'C1', tag:'nouns' },
+  { id:'v18', word:'coherent', phonetic:'/kəʊˈhɪərənt/', translation:'coherente', definition:'Logical and consistent; easy to understand', examples:["Please give a coherent explanation.","Her argument was coherent and well-structured."], level:'C1', tag:'adjectives' },
+  { id:'v19', word:'reluctant', phonetic:'/rɪˈlʊktənt/', translation:'reticente, poco dispuesto', definition:'Unwilling and hesitant; not enthusiastic', examples:["She was reluctant to speak in public.","He gave a reluctant smile."], level:'B2', tag:'adjectives' },
+  { id:'v20', word:'profound', phonetic:'/prəˈfaʊnd/', translation:'profundo', definition:'Very great or intense; having deep insight', examples:["The experience had a profound effect on him.","She asked a profound question."], level:'C1', tag:'adjectives' },
+];
+
+const THEORY_CARDS = [
+  { id:'t01', title:'Present Perfect vs Past Simple', subtitle:'The most confused tense pair at B1+', level:'B1', rule:'Use Present Perfect when the past connects to NOW. Use Past Simple when time is specific and finished.', examples:[{correct:"I've lost my keys.", note:'Still lost = present connection'},{correct:"I lost my keys yesterday.", note:'Specific finished time → Past Simple'},{incorrect:"I've seen him last week.", correct2:"I saw him last week.", note:'"Last week" forces Past Simple'}], trap:'Time expressions like yesterday, last week, in 2019, ago → always Past Simple.', tags:['tenses','B1','very-common'] },
+  { id:'t02', title:'Conditionals — The 4 Types', subtitle:'Real vs hypothetical vs impossible', level:'B2', rule:'Type 0: facts. Type 1: real future. Type 2: hypothetical present. Type 3: impossible past.', examples:[{correct:'If you heat water to 100°C, it boils.', note:'Type 0 — general truth'},{correct:"If it rains, I'll stay home.", note:'Type 1 — real possibility'},{correct:'If I had more time, I would travel.', note:'Type 2 — hypothetical'},{correct:'If I had studied, I would have passed.', note:'Type 3 — past regret'}], trap:'Never use "would" in the IF clause: ✗ "If I would have..." → ✓ "If I had..."', tags:['conditionals','B2','grammar'] },
+  { id:'t03', title:'Articles: a / an / the / ∅', subtitle:'The rules native speakers follow instinctively', level:'B2', rule:'a/an = first mention or non-specific. the = shared reference or unique. ∅ = general/abstract concepts.', examples:[{correct:'I saw a dog. The dog was barking.', note:'First mention → a. Second mention → the'},{correct:'Life is short. / Music is universal.', note:'Abstract nouns → no article'},{correct:'She plays the piano.', note:'Instruments → always "the"'},{incorrect:'She is a best student.', correct2:'She is the best student.', note:'Superlatives → always "the"'}], trap:'"The" before countries is usually wrong: ✗ "the Spain" → ✓ "Spain". Exceptions: the USA, the UK, the Netherlands.', tags:['articles','B2','tricky'] },
+  { id:'t04', title:'Modal Verbs — Obligation & Deduction', subtitle:"must / should / have to / need to / can't", level:'B2', rule:'For obligation: must (strong/internal) vs have to (external rule). For deduction: must (certain) vs might (possible) vs can\'t (impossible).', examples:[{correct:'You must wear a seatbelt.', note:'Rule/obligation — "must"'},{correct:'You should eat more vegetables.', note:'Advice — "should"'},{correct:'She must be tired.', note:'Logical certainty based on evidence'},{correct:"He can't be 40 — he looks 25.", note:'Impossibility'}], trap:'"Must" has no past form. Past deduction: "must have been": "She must have been tired."', tags:['modals','B2','deduction'] },
+  { id:'t05', title:'Collocations: make vs do', subtitle:'The pair that trips up every Spanish speaker', level:'B1', rule:'"Make" = create, produce, or cause. "Do" = perform an activity, task, or duty.', examples:[{correct:'make a decision / make a mistake / make progress / make an effort', note:'make = produce/create'},{correct:'do homework / do exercise / do business / do a course', note:'do = carry out an activity'},{incorrect:'do a mistake', correct2:'make a mistake', note:'Most learners say "do" here!'},{incorrect:'make homework', correct2:'do homework', note:'Classic error'}], trap:'Some phrases break the rules: "do your best" (not "make"), "make a bed" (not "do"). Learn them as chunks.', tags:['collocations','B1','make-do'] },
+  { id:'t06', title:'False Friends — The Big 5', subtitle:'Spanish words that look English but mean something different', level:'B1', rule:'These words exist in English but mean something completely different from their Spanish lookalikes.', examples:[{correct:'Actually = en realidad / de hecho', note:'NOT "actualmente" → use "currently"'},{correct:'Eventually = finalmente / al final', note:'NOT "eventualmente" → use "possibly" or "perhaps"'},{correct:'Sensible = sensato / práctico', note:'NOT "sensible" → use "sensitive"'},{correct:'Sympathetic = comprensivo / empático', note:'NOT "simpático" → use "friendly" or "likeable"'}], trap:'"Embarrassed" ≠ "embarazada". "Embarrassed" = avergonzado. "Pregnant" = embarazada.', tags:['false-friends','B1','vocabulary'] },
+];
+
+const REAL_ENGLISH = [
+  { id:'re01', title:'"Make sense" — not "have sense"', category:'collocation', content:'In English, ideas and things MAKE sense. People MAKE sense OF things. Nothing "has sense".', examples:[{text:'That makes sense.', correct:true},{text:'That has sense.', correct:false, note:'Direct translation — never used'},{text:"I can't make sense of this.", correct:true, note:'"make sense of" = understand something confusing'}] },
+  { id:'re02', title:'"Interested in" — not "interested by"', category:'preposition', content:'The adjective "interested" always takes the preposition "in", not "by" or "about".', examples:[{text:"I'm interested in learning more.", correct:true},{text:"I'm interested by this topic.", correct:false, note:'"By" works with passive voice but not "interested"'},{text:"She's very interested in history.", correct:true}] },
+  { id:'re03', title:'"It depends on" — not "it depends of"', category:'preposition', content:'"Depend" always uses "on" in English. This is one of the most common Spanish-speaker errors.', examples:[{text:'It depends on the situation.', correct:true},{text:'It depends of the situation.', correct:false, note:'Direct translation from Spanish'},{text:'That depends on what you want.', correct:true}] },
+  { id:'re04', title:'"I agree" — not "I\'m agree"', category:'collocation', content:'"Agree" is a verb in English, not an adjective. You CANNOT say "I\'m agree" or "I\'m very agree".', examples:[{text:'I agree with you.', correct:true},{text:"I'm agree with you.", correct:false, note:'"agree" is a verb, not adjective — no "be"'},{text:'I totally agree.', correct:true},{text:"I couldn't agree more.", correct:true, note:'Idiomatic way to express strong agreement'}] },
+  { id:'re05', title:'"Look forward to" + gerund', category:'collocation', content:'"Look forward to" is followed by a NOUN or GERUND (-ing), never a bare infinitive.', examples:[{text:"I'm looking forward to the weekend.", correct:true},{text:"I'm looking forward to meeting you.", correct:true},{text:"I'm looking forward to meet you.", correct:false, note:'"to" here is a preposition, not part of infinitive'}] },
+  { id:'re06', title:'"By the way" vs "On the other hand"', category:'register', content:'"By the way" (BTW) introduces an unrelated topic. "On the other hand" introduces a contrasting point.', examples:[{text:"By the way, did you see the game?", correct:true, note:'Changing subject'},{text:"On the other hand, the cost is higher.", correct:true, note:'Contrasting idea'},{text:"By the way, the cost is higher.", correct:false, note:'Not a topic change — should be "however" or "on the other hand"'}] },
+  { id:'re07', title:'"-ing" vs "-ed" adjectives', category:'collocation', content:'"-ing" adjectives describe a quality of a thing. "-ed" adjectives describe how a PERSON feels.', examples:[{text:'The movie was boring.', correct:true, note:'The movie has the quality of being boring'},{text:'I was bored.', correct:true, note:"I (person) felt bored"},{text:'She was very interesting.', correct:true, note:'She has interesting qualities'},{text:'I was interesting in the book.', correct:false, note:'Should be "interested in"'}] },
+  { id:'re08', title:'"No wonder" — expressing unsurprise', category:'idiom', content:'"No wonder" = "it\'s not surprising that". It\'s a very natural way to express logical consequences.', examples:[{text:"No wonder you're tired — you worked 12 hours!", correct:true},{text:"No wonder she got the job.", correct:true, note:'Implies: she clearly deserved it'},{text:"It's no wonder that he failed.", correct:true}] },
+];
+
+const DEFAULT_PROGRESS = { streak:0, lastSessionDate:'', totalMinutes:0, xpTotal:0, xpToday:0, xpTodayDate:'', level:'B1+', errorProfile:[], vocabProgress:{}, phrasalProgress:{}, seenInsights:[], completedExercises:[], sessions:[] };
+
+function useProgress() {
+  const [progress, setProgress] = useState(() => {
+    try { const s = localStorage.getItem('englsh-progress'); if (s) return { ...DEFAULT_PROGRESS, ...JSON.parse(s) }; } catch {}
+    return { ...DEFAULT_PROGRESS };
+  });
+  const save = (next) => { try { localStorage.setItem('englsh-progress', JSON.stringify(next)); } catch {} };
+  const updateStreak = useCallback(() => {
+    const today = todayStr();
+    setProgress(prev => {
+      if (prev.lastSessionDate === today) return prev;
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+      const newStreak = prev.lastSessionDate === yesterday ? prev.streak + 1 : 1;
+      const xpToday = prev.xpTodayDate === today ? prev.xpToday : 0;
+      const next = { ...prev, streak: newStreak, lastSessionDate: today, xpToday, xpTodayDate: today };
+      save(next); return next;
+    });
+  }, []);
+  const addXP = useCallback((amount) => {
+    const today = todayStr();
+    setProgress(prev => {
+      const xpToday = prev.xpTodayDate === today ? prev.xpToday + amount : amount;
+      const next = { ...prev, xpTotal: prev.xpTotal + amount, xpToday, xpTodayDate: today };
+      save(next); return next;
+    });
+  }, []);
+  const addError = useCallback((ex, userAnswer) => {
+    setProgress(prev => {
+      const existing = prev.errorProfile.find(e => e.exerciseId === ex.id);
+      if (existing) {
+        const updated = prev.errorProfile.map(e => e.exerciseId === ex.id ? { ...e, count:(e.count||1)+1, repetitions:0, interval:1, nextReviewDate:daysFromNow(1) } : e);
+        const next = { ...prev, errorProfile: updated }; save(next); return next;
+      }
+      const entry = { exerciseId:ex.id, category:ex.category, subcategory:ex.subcategory, question:ex.question, userAnswer:String(userAnswer), correctAnswer:Array.isArray(ex.options)?ex.options[ex.correctAnswer]:String(ex.correctAnswer), explanation:ex.explanation, timestamp:Date.now(), repetitions:0, interval:1, easeFactor:2.5, nextReviewDate:daysFromNow(1), resolved:false, count:1 };
+      const next = { ...prev, errorProfile: [...prev.errorProfile, entry] }; save(next); return next;
+    });
+  }, []);
+  const resolveError = useCallback((exerciseId) => {
+    setProgress(prev => { const updated = prev.errorProfile.map(e => e.exerciseId === exerciseId ? { ...e, resolved:true } : e); const next = { ...prev, errorProfile:updated }; save(next); return next; });
+  }, []);
+  const markExerciseDone = useCallback((id) => {
+    setProgress(prev => { if (prev.completedExercises.includes(id)) return prev; const next = { ...prev, completedExercises:[...prev.completedExercises,id] }; save(next); return next; });
+  }, []);
+  const reviewVocab = useCallback((id, quality) => {
+    setProgress(prev => {
+      const cur = prev.vocabProgress[id] || { repetitions:0, interval:1, easeFactor:2.5 };
+      const updated = sm2Update(cur.repetitions, cur.interval, cur.easeFactor, quality);
+      const status = updated.repetitions >= 5 ? 'mastered' : updated.repetitions >= 3 ? 'strong' : updated.repetitions >= 1 ? 'weak' : 'new';
+      const next = { ...prev, vocabProgress: { ...prev.vocabProgress, [id]: { ...updated, nextReviewDate:daysFromNow(updated.interval), status } } }; save(next); return next;
+    });
+  }, []);
+  const updatePhrasal = useCallback((id, status) => {
+    setProgress(prev => { const next = { ...prev, phrasalProgress:{ ...prev.phrasalProgress, [id]:status } }; save(next); return next; });
+  }, []);
+  const markInsightSeen = useCallback((id) => {
+    setProgress(prev => { if (prev.seenInsights.includes(id)) return prev; const next = { ...prev, seenInsights:[...prev.seenInsights,id] }; save(next); return next; });
+  }, []);
+  const getDueErrors = useCallback(() => progress.errorProfile.filter(e => !e.resolved && isDue(e.nextReviewDate)), [progress.errorProfile]);
+  const getWeakPoints = useCallback(() => {
+    const counts = {};
+    progress.errorProfile.filter(e => !e.resolved).forEach(e => { counts[e.subcategory] = counts[e.subcategory] || { count:0, category:e.category, entries:[] }; counts[e.subcategory].count += (e.count||1); counts[e.subcategory].entries.push(e); });
+    return Object.entries(counts).map(([sub, val]) => ({ subcategory:sub, ...val })).sort((a,b) => b.count-a.count).slice(0,3);
+  }, [progress.errorProfile]);
+  return { progress, updateStreak, addXP, addError, resolveError, markExerciseDone, reviewVocab, updatePhrasal, markInsightSeen, getDueErrors, getWeakPoints };
+}
+
+function Badge({ children, color='blue', small }) {
+  const colors = { blue:'#3B82F6', green:'#22C55E', red:'#EF4444', yellow:'#F59E0B', purple:'#8B5CF6', gray:'#9A9A9A' };
+  const c = colors[color] || colors.blue;
+  return <span style={{ background:c+'22', color:c, border:`1px solid ${c}44`, borderRadius:4, padding:small?'1px 6px':'2px 8px', fontSize:small?10:11, fontWeight:600, letterSpacing:'0.04em', whiteSpace:'nowrap' }}>{children}</span>;
+}
+
+function Btn({ children, onClick, variant='primary', small, disabled, style={} }) {
+  const styles = { primary:{ background:'#3B82F6', color:'#fff', border:'none' }, ghost:{ background:'transparent', color:'#F0F0F0', border:'1px solid #2A2A2A' }, danger:{ background:'#EF444422', color:'#EF4444', border:'1px solid #EF444444' }, success:{ background:'#22C55E22', color:'#22C55E', border:'1px solid #22C55E44' } };
+  return <button onClick={onClick} disabled={disabled} style={{ ...styles[variant], borderRadius:6, padding:small?'4px 10px':'8px 16px', fontSize:small?12:13, fontWeight:600, cursor:disabled?'not-allowed':'pointer', opacity:disabled?0.5:1, transition:'opacity 0.15s', ...style }}>{children}</button>;
+}
+
+function Card({ children, style={}, className='' }) {
+  return <div className={className} style={{ background:'#161616', border:'1px solid #2A2A2A', borderRadius:10, padding:20, ...style }}>{children}</div>;
+}
+
+const NAV = [
+  { id:'dashboard', icon:'⚡', label:'Dashboard' },
+  { id:'practice', icon:'🎯', label:'Practice' },
+  { id:'phrasal', icon:'🔤', label:'Phrasal Verbs' },
+  { id:'mistakes', icon:'📋', label:'Mistakes' },
+  { id:'vocab', icon:'📚', label:'Vocabulary' },
+  { id:'theory', icon:'💡', label:'Theory' },
+  { id:'real', icon:'🌍', label:'Real English' },
+];
+
+function Sidebar({ page, setPage, progress, errorCount }) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div style={{ width:collapsed?56:220, minHeight:'100vh', background:'#0D0D0D', borderRight:'1px solid #1E1E1E', display:'flex', flexDirection:'column', transition:'width 0.2s', flexShrink:0, position:'sticky', top:0, height:'100vh' }}>
+      <div style={{ padding:'20px 16px 12px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        {!collapsed && <span style={{ fontWeight:800, fontSize:17, letterSpacing:'0.15em', color:'#F0F0F0' }}>ENGLSH</span>}
+        <button onClick={() => setCollapsed(c=>!c)} style={{ background:'none', border:'none', color:'#555', fontSize:16, padding:4, borderRadius:4, marginLeft:collapsed?'auto':0 }}>{collapsed?'→':'←'}</button>
+      </div>
+      <nav style={{ flex:1, padding:'4px 8px' }}>
+        {NAV.map(n => {
+          const active = page === n.id;
+          return (
+            <button key={n.id} onClick={() => setPage(n.id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:10, padding:'9px 10px', borderRadius:6, border:'none', background:active?'#3B82F611':'transparent', borderLeft:active?'2px solid #3B82F6':'2px solid transparent', color:active?'#F0F0F0':'#9A9A9A', fontSize:13, fontWeight:active?600:400, cursor:'pointer', marginBottom:1, textAlign:'left', transition:'all 0.1s' }}>
+              <span style={{ fontSize:16 }}>{n.icon}</span>
+              {!collapsed && <span style={{ flex:1 }}>{n.label}</span>}
+              {!collapsed && n.id==='mistakes' && errorCount>0 && <span style={{ background:'#EF4444', color:'#fff', borderRadius:10, padding:'1px 6px', fontSize:10, fontWeight:700 }}>{errorCount}</span>}
+            </button>
+          );
+        })}
+      </nav>
+      {!collapsed && (
+        <div style={{ padding:'12px 16px 20px', borderTop:'1px solid #1E1E1E' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+            <span style={{ fontSize:16 }}>🔥</span>
+            <span style={{ fontSize:13, color:'#F0F0F0', fontWeight:600 }}>{progress.streak} day streak</span>
+          </div>
+          <div style={{ height:4, background:'#1E1E1E', borderRadius:2, overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${Math.min(100,(progress.xpToday/500)*100)}%`, background:'#8B5CF6', borderRadius:2, transition:'width 0.3s' }}/>
+          </div>
+          <div style={{ fontSize:11, color:'#555', marginTop:4 }}>{progress.xpToday} / 500 XP today</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExerciseCard({ exercise, onCorrect, onWrong, onNext }) {
+  const [selected, setSelected] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [shake, setShake] = useState(false);
+  const handleSubmit = () => {
+    if (selected === null) return;
+    setSubmitted(true);
+    if (selected === exercise.correctAnswer) { onCorrect(); }
+    else { setShake(true); setTimeout(() => setShake(false), 400); onWrong(exercise.options[selected]); }
+  };
+  const correct = submitted && selected === exercise.correctAnswer;
+  const typeLabel = { 'complete-sentence':'Complete the sentence', 'detect-mistake':'Detect the mistake', 'natural-vs-unnatural':'Natural or unnatural?', 'choose-best':'Choose the best option', 'translation':'Translate naturally' }[exercise.type] || 'Exercise';
+  return (
+    <div className="fade-in" style={{ maxWidth:580, margin:'0 auto' }}>
+      <div style={{ marginBottom:8 }}>
+        <span style={{ fontSize:11, color:'#555', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em' }}>{typeLabel}</span>
+        <span style={{ marginLeft:10 }}><Badge color={exercise.level==='C1'?'purple':exercise.level==='B2'?'blue':'green'} small>{exercise.level}</Badge></span>
+      </div>
+      <Card style={{ marginBottom:16, borderColor:submitted?(correct?'#22C55E44':'#EF444444'):'#2A2A2A' }}>
+        <div className="mono" style={{ fontSize:17, color:'#F0F0F0', lineHeight:1.6 }}>{exercise.question}</div>
+        {exercise.type==='translation' && <div style={{ fontSize:12, color:'#555', marginTop:4 }}>Choose the most natural English translation.</div>}
+      </Card>
+      <div className={shake?'shake':''} style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+        {exercise.options.map((opt, i) => {
+          let borderColor='#2A2A2A', bg='#161616', color='#F0F0F0';
+          if (submitted) { if (i===exercise.correctAnswer) { borderColor='#22C55E'; bg='#22C55E11'; color='#22C55E'; } else if (i===selected) { borderColor='#EF4444'; bg='#EF444411'; color='#EF4444'; } else color='#555'; }
+          else if (selected===i) { borderColor='#3B82F6'; bg='#3B82F611'; }
+          return <button key={i} onClick={() => { if (!submitted) setSelected(i); }} style={{ background:bg, border:`1px solid ${borderColor}`, borderRadius:8, padding:'11px 16px', color, fontSize:14, textAlign:'left', cursor:submitted?'default':'pointer', fontFamily:'inherit', transition:'all 0.15s' }}><span style={{ color:'#555', marginRight:10, fontSize:12 }}>{['A','B','C','D'][i]}</span>{opt}</button>;
+        })}
+      </div>
+      {!submitted && <Btn onClick={handleSubmit} disabled={selected===null} style={{ width:'100%', padding:'11px' }}>Submit Answer</Btn>}
+      {submitted && (
+        <Card className="fade-in" style={{ borderColor:correct?'#22C55E44':'#EF444444', background:correct?'#22C55E08':'#EF444408' }}>
+          <div style={{ fontWeight:700, fontSize:14, color:correct?'#22C55E':'#EF4444', marginBottom:8 }}>{correct?'✓ Correct! +10 XP':'✗ Incorrect (saved to Mistakes)'}</div>
+          <div style={{ fontSize:13, color:'#D0D0D0', lineHeight:1.6 }}>{exercise.explanation}</div>
+          {exercise.nativeTip && <div style={{ fontSize:12, color:'#F59E0B', marginTop:8, padding:'8px 12px', background:'#F59E0B0A', borderRadius:6, borderLeft:'2px solid #F59E0B' }}>💬 {exercise.nativeTip}</div>}
+          <Btn onClick={onNext} style={{ marginTop:14, width:'100%' }}>Next →</Btn>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function Dashboard({ progress, setPage, getWeakPoints, getDueErrors }) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const weakPoints = getWeakPoints();
+  const dueErrors = getDueErrors();
+  const totalVocabDue = VOCAB_DATA.filter(v => { const p = progress.vocabProgress[v.id]; return !p || isDue(p.nextReviewDate); }).length;
+  const subcategoryLabel = s => s.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  return (
+    <div className="fade-in" style={{ maxWidth:820, margin:'0 auto' }}>
+      <div style={{ marginBottom:28 }}>
+        <div style={{ fontSize:22, fontWeight:700, color:'#F0F0F0', marginBottom:4 }}>{greeting}.</div>
+        <div style={{ fontSize:14, color:'#9A9A9A' }}>{progress.streak>0?`${progress.streak}-day streak. Keep it going.`:'Start your first session today.'}</div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:28 }}>
+        {[{ label:"Today's Training", value:`${Math.min(8,dueErrors.length+3)} items`, sub:'~10 min', icon:'⚡' },{ label:'Streak', value:`${progress.streak} days`, sub:progress.streak>0?'Keep it up!':'Start today', icon:'🔥' },{ label:'XP Today', value:`${progress.xpToday}`, sub:'/ 500 daily goal', icon:'✶' }].map(s => (
+          <Card key={s.label}><div style={{ fontSize:20, marginBottom:8 }}>{s.icon}</div><div style={{ fontSize:22, fontWeight:700, color:'#F0F0F0', marginBottom:2 }}>{s.value}</div><div style={{ fontSize:12, color:'#9A9A9A' }}>{s.sub}</div><div style={{ fontSize:11, color:'#555', marginTop:4, textTransform:'uppercase', letterSpacing:'0.06em' }}>{s.label}</div></Card>
+        ))}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+        <Card>
+          <div style={{ fontWeight:700, fontSize:13, color:'#F0F0F0', marginBottom:14 }}>📋 Weak Points</div>
+          {weakPoints.length===0 ? <div style={{ color:'#555', fontSize:13 }}>No weak points yet. Start practicing!</div> : weakPoints.map(wp => (
+            <div key={wp.subcategory} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+              <div><div style={{ fontSize:13, color:'#D0D0D0', fontWeight:500 }}>{subcategoryLabel(wp.subcategory)}</div><div style={{ fontSize:11, color:'#555' }}>{wp.count} error{wp.count!==1?'s':''}</div></div>
+              <Btn small variant='ghost' onClick={() => setPage('practice')}>Practice</Btn>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{ fontWeight:700, fontSize:13, color:'#F0F0F0', marginBottom:14 }}>📚 Due for Review</div>
+          <div style={{ marginBottom:10 }}><div style={{ fontSize:13, color:'#D0D0D0' }}>{dueErrors.length} mistakes due</div><div style={{ fontSize:11, color:'#555' }}>from your error notebook</div></div>
+          <div><div style={{ fontSize:13, color:'#D0D0D0' }}>{totalVocabDue} vocabulary words</div><div style={{ fontSize:11, color:'#555' }}>spaced repetition due</div></div>
+        </Card>
+      </div>
+      <Card style={{ textAlign:'center', padding:32 }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#F0F0F0', marginBottom:6 }}>Ready to train?</div>
+        <div style={{ fontSize:13, color:'#9A9A9A', marginBottom:20 }}>Your daily session — grammar, vocabulary, and your personal weak points.</div>
+        <Btn onClick={() => setPage('practice')} style={{ padding:'12px 40px', fontSize:15 }}>▶ Start Session</Btn>
+        <div style={{ marginTop:20, display:'flex', gap:10, justifyContent:'center', flexWrap:'wrap' }}>
+          <Btn variant='ghost' small onClick={() => setPage('phrasal')}>🔤 Phrasal Verbs</Btn>
+          <Btn variant='ghost' small onClick={() => setPage('vocab')}>📚 Vocabulary</Btn>
+          <Btn variant='ghost' small onClick={() => setPage('real')}>🌍 Real English</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function Practice({ progress, addError, addXP, markExerciseDone, getDueErrors, setPage }) {
+  const [mode, setMode] = useState('browse');
+  const [queue, setQueue] = useState([]);
+  const [qIdx, setQIdx] = useState(0);
+  const [score, setScore] = useState(0);
+  const [xpGained, setXpGained] = useState(0);
+  const [errorsThis, setErrorsThis] = useState(0);
+  const buildSession = () => {
+    const dueErrIds = getDueErrors().map(e => e.exerciseId);
+    const review = EXERCISES.filter(e => dueErrIds.includes(e.id)).slice(0,3);
+    const fresh = EXERCISES.filter(e => !dueErrIds.includes(e.id) && !progress.completedExercises.includes(e.id)).sort(() => Math.random()-0.5).slice(0,7);
+    return [...review, ...fresh].slice(0,10);
+  };
+  const startSession = () => { setQueue(buildSession()); setQIdx(0); setScore(0); setXpGained(0); setErrorsThis(0); setMode('session'); };
+  const handleCorrect = () => { addXP(10); setScore(s=>s+1); setXpGained(x=>x+10); markExerciseDone(queue[qIdx].id); };
+  const handleWrong = (ua) => { addError(queue[qIdx], ua); addXP(5); setXpGained(x=>x+5); setErrorsThis(e=>e+1); };
+  const handleNext = () => { if (qIdx+1>=queue.length) { addXP(50); setXpGained(x=>x+50); setMode('summary'); } else setQIdx(i=>i+1); };
+  if (mode==='browse') return (
+    <div className="fade-in" style={{ maxWidth:700, margin:'0 auto' }}>
+      <div style={{ marginBottom:24 }}><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Practice Mode</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>Grammar, naturalness, and vocabulary — adapted to your weak points.</p></div>
+      <Card style={{ marginBottom:20, padding:28, textAlign:'center' }}>
+        <div style={{ fontSize:14, fontWeight:600, color:'#F0F0F0', marginBottom:8 }}>Daily Session</div>
+        <div style={{ fontSize:13, color:'#9A9A9A', marginBottom:20 }}>~10 exercises · includes your error review · ~10 min</div>
+        <Btn onClick={startSession} style={{ padding:'12px 36px', fontSize:15 }}>▶ Start Daily Session</Btn>
+      </Card>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+        {[{l:'Grammar',n:EXERCISES.filter(e=>e.category==='grammar').length,icon:'📐'},{l:'Naturalness',n:EXERCISES.filter(e=>e.category==='naturalness').length,icon:'💬'},{l:'Vocabulary',n:EXERCISES.filter(e=>e.category==='vocabulary').length,icon:'📖'}].map(cat => (
+          <Card key={cat.l} style={{ textAlign:'center', cursor:'pointer', padding:16 }} onClick={startSession}><div style={{ fontSize:24, marginBottom:8 }}>{cat.icon}</div><div style={{ fontSize:13, fontWeight:600, color:'#F0F0F0', marginBottom:4 }}>{cat.l}</div><div style={{ fontSize:11, color:'#555' }}>{cat.n} exercises</div></Card>
+        ))}
+      </div>
+    </div>
+  );
+  if (mode==='summary') {
+    const pct = Math.round((score/queue.length)*100);
+    return (
+      <div className="fade-in" style={{ maxWidth:480, margin:'0 auto', textAlign:'center' }}>
+        <Card style={{ padding:40 }}>
+          <div style={{ fontSize:40, marginBottom:16 }}>{pct>=80?'🎯':pct>=60?'👍':'💪'}</div>
+          <div style={{ fontSize:22, fontWeight:700, marginBottom:6 }}>{score}/{queue.length} correct</div>
+          <div style={{ fontSize:14, color:'#9A9A9A', marginBottom:24 }}>{pct}% accuracy this session</div>
+          <div style={{ display:'flex', justifyContent:'center', gap:20, marginBottom:28 }}>
+            <div><div style={{ fontSize:20, fontWeight:700, color:'#8B5CF6' }}>+{xpGained}</div><div style={{ fontSize:11, color:'#555' }}>XP earned</div></div>
+            <div><div style={{ fontSize:20, fontWeight:700, color:'#EF4444' }}>{errorsThis}</div><div style={{ fontSize:11, color:'#555' }}>errors saved</div></div>
+            <div><div style={{ fontSize:20, fontWeight:700, color:'#22C55E' }}>{score}</div><div style={{ fontSize:11, color:'#555' }}>correct</div></div>
+          </div>
+          {errorsThis>0 && <div style={{ fontSize:13, color:'#F59E0B', marginBottom:20, padding:'10px 16px', background:'#F59E0B0A', borderRadius:8, borderLeft:'2px solid #F59E0B' }}>{errorsThis} mistake{errorsThis!==1?'s':''} saved to your Notebook for review.</div>}
+          <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+            <Btn onClick={() => setMode('browse')}>← Back</Btn>
+            <Btn onClick={startSession} variant='ghost'>Practice Again</Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  const ex = queue[qIdx];
+  return (
+    <div className="fade-in" style={{ maxWidth:640, margin:'0 auto' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24 }}>
+        <Btn small variant='ghost' onClick={() => setMode('browse')}>← Exit</Btn>
+        <div style={{ flex:1, height:4, background:'#1E1E1E', borderRadius:2, overflow:'hidden' }}><div style={{ height:'100%', width:`${(qIdx/queue.length)*100}%`, background:'#3B82F6', borderRadius:2, transition:'width 0.3s' }}/></div>
+        <span style={{ fontSize:12, color:'#555', whiteSpace:'nowrap' }}>{qIdx+1} / {queue.length}</span>
+      </div>
+      <ExerciseCard exercise={ex} onCorrect={handleCorrect} onWrong={handleWrong} onNext={handleNext} />
+    </div>
+  );
+}
+
+function PhrasalVerbs({ progress, updatePhrasal, addXP }) {
+  const [tab, setTab] = useState('theory');
+  const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('all');
+  const [pvIdx, setPvIdx] = useState(0);
+  const [pSel, setPSel] = useState(null);
+  const [pSub, setPSub] = useState(false);
+  const cats = ['all','work','communication','emotions','relationships','movement'];
+  const filtered = PHRASAL_VERBS.filter(pv => (catFilter==='all'||pv.category===catFilter) && (search===''||`${pv.verb} ${pv.particle}`.toLowerCase().includes(search.toLowerCase())||pv.meaning.toLowerCase().includes(search.toLowerCase())));
+  const pvEx = PV_EXERCISES[pvIdx % PV_EXERCISES.length];
+  const handlePVNext = () => { setPvIdx(i=>i+1); setPSel(null); setPSub(false); };
+  return (
+    <div className="fade-in" style={{ maxWidth:820, margin:'0 auto' }}>
+      <div style={{ marginBottom:20 }}><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Phrasal Verbs</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>Theory and practice for {PHRASAL_VERBS.length} essential phrasal verbs.</p></div>
+      <div style={{ display:'flex', gap:2, marginBottom:20, background:'#161616', padding:4, borderRadius:8, width:'fit-content' }}>
+        {['theory','practice'].map(t => <button key={t} onClick={() => setTab(t)} style={{ padding:'6px 18px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600, background:tab===t?'#1E1E1E':'transparent', color:tab===t?'#F0F0F0':'#9A9A9A' }}>{t==='theory'?'📖 Theory':'🎯 Practice'}</button>)}
+      </div>
+      {tab==='theory' && (
+        <>
+          <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search phrasal verbs..." style={{ background:'#161616', border:'1px solid #2A2A2A', borderRadius:6, padding:'7px 12px', color:'#F0F0F0', fontSize:13, outline:'none', flex:1, minWidth:200 }} />
+            {cats.map(c => <button key={c} onClick={() => setCatFilter(c)} style={{ padding:'6px 12px', borderRadius:6, border:`1px solid ${catFilter===c?'#3B82F6':'#2A2A2A'}`, background:catFilter===c?'#3B82F611':'transparent', color:catFilter===c?'#3B82F6':'#9A9A9A', fontSize:12, cursor:'pointer', fontWeight:600, textTransform:'capitalize' }}>{c}</button>)}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:12 }}>
+            {filtered.map(pv => {
+              const status = progress.phrasalProgress[pv.id] || 'new';
+              return (
+                <Card key={pv.id}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+                    <div><span className="mono" style={{ fontSize:17, fontWeight:700, color:'#F0F0F0' }}>{pv.verb} </span><span className="mono" style={{ fontSize:17, fontWeight:700, color:'#3B82F6' }}>{pv.particle}</span></div>
+                    <div style={{ display:'flex', gap:4 }}><Badge color={pv.level==='B1'?'green':'blue'} small>{pv.level}</Badge>{status==='known'&&<Badge color='green' small>known</Badge>}</div>
+                  </div>
+                  <div style={{ fontSize:13, color:'#D0D0D0', marginBottom:4 }}>{pv.meaning}</div>
+                  <div style={{ fontSize:12, color:'#555', marginBottom:10, fontStyle:'italic' }}>{pv.translation}</div>
+                  {pv.examples.map((ex,i) => <div key={i} className="mono" style={{ fontSize:12, color:'#9A9A9A', marginBottom:4, borderLeft:'2px solid #2A2A2A', paddingLeft:8 }}>"{ex}"</div>)}
+                  <button onClick={() => updatePhrasal(pv.id, status==='known'?'learning':'known')} style={{ marginTop:12, width:'100%', padding:'6px', borderRadius:6, border:`1px solid ${status==='known'?'#22C55E44':'#2A2A2A'}`, background:status==='known'?'#22C55E11':'transparent', color:status==='known'?'#22C55E':'#9A9A9A', fontSize:12, cursor:'pointer', fontWeight:600 }}>{status==='known'?'✓ Known':'Mark as known'}</button>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {tab==='practice' && (
+        <div style={{ maxWidth:560, margin:'0 auto' }}>
+          <Card style={{ marginBottom:16, borderColor:pSub?(pvEx.options[pSel]===pvEx.answer?'#22C55E44':'#EF444444'):'#2A2A2A' }}>
+            <div style={{ fontSize:11, color:'#555', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>{pvEx.type.replace(/-/g,' ').toUpperCase()}</div>
+            <div className="mono" style={{ fontSize:16, color:'#F0F0F0', lineHeight:1.6 }}>{pvEx.question}</div>
+          </Card>
+          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+            {pvEx.options.map((opt,i) => {
+              let bc='#2A2A2A', bg='#161616', c='#F0F0F0';
+              if (pSub) { if (opt===pvEx.answer) { bc='#22C55E'; bg='#22C55E11'; c='#22C55E'; } else if (i===pSel) { bc='#EF4444'; bg='#EF444411'; c='#EF4444'; } else c='#555'; } else if (pSel===i) { bc='#3B82F6'; bg='#3B82F611'; }
+              return <button key={i} onClick={() => { if (!pSub) setPSel(i); }} style={{ background:bg, border:`1px solid ${bc}`, borderRadius:8, padding:'10px 16px', color:c, fontSize:14, textAlign:'left', cursor:pSub?'default':'pointer', fontFamily:'inherit' }}><span style={{ color:'#555', marginRight:10, fontSize:12 }}>{['A','B','C','D'][i]}</span>{opt}</button>;
+            })}
+          </div>
+          {!pSub ? <Btn onClick={() => { if (pSel!==null) { setPSub(true); if (pvEx.options[pSel]===pvEx.answer) addXP(10); else addXP(5); } }} disabled={pSel===null} style={{ width:'100%', padding:'11px' }}>Submit</Btn> : (
+            <Card className="fade-in" style={{ borderColor:pvEx.options[pSel]===pvEx.answer?'#22C55E44':'#EF444444' }}>
+              <div style={{ fontWeight:700, fontSize:14, color:pvEx.options[pSel]===pvEx.answer?'#22C55E':'#EF4444', marginBottom:8 }}>{pvEx.options[pSel]===pvEx.answer?'✓ Correct! +10 XP':'✗ Incorrect'}</div>
+              <div style={{ fontSize:13, color:'#D0D0D0', lineHeight:1.6 }}>{pvEx.explanation}</div>
+              <Btn onClick={handlePVNext} style={{ marginTop:14, width:'100%' }}>Next →</Btn>
+            </Card>
+          )}
+          <div style={{ textAlign:'center', marginTop:16, fontSize:12, color:'#555' }}>Exercise {(pvIdx%PV_EXERCISES.length)+1} of {PV_EXERCISES.length}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Mistakes({ progress, resolveError, setPage }) {
+  const [filter, setFilter] = useState('all');
+  const errors = progress.errorProfile.filter(e => !e.resolved);
+  const filtered = filter==='all' ? errors : errors.filter(e => e.category===filter);
+  const subcategoryLabel = s => s.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  return (
+    <div className="fade-in" style={{ maxWidth:700, margin:'0 auto' }}>
+      <div style={{ marginBottom:20, display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+        <div><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Mistakes Notebook</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>Automatically built from your practice sessions.</p></div>
+        {errors.length>0 && <Badge color='red'>{errors.length} open</Badge>}
+      </div>
+      <div style={{ display:'flex', gap:6, marginBottom:20, flexWrap:'wrap' }}>
+        {['all','grammar','vocabulary','naturalness'].map(f => <button key={f} onClick={() => setFilter(f)} style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${filter===f?'#3B82F6':'#2A2A2A'}`, background:filter===f?'#3B82F611':'transparent', color:filter===f?'#3B82F6':'#9A9A9A', fontSize:12, cursor:'pointer', fontWeight:600, textTransform:'capitalize' }}>{f}</button>)}
+      </div>
+      {filtered.length===0 ? (
+        <Card style={{ textAlign:'center', padding:40 }}>
+          <div style={{ fontSize:32, marginBottom:12 }}>✓</div>
+          <div style={{ fontSize:16, fontWeight:600, color:'#F0F0F0', marginBottom:8 }}>No mistakes here.</div>
+          <div style={{ fontSize:13, color:'#9A9A9A', marginBottom:20 }}>Start practicing to build your personal error notebook.</div>
+          <Btn onClick={() => setPage('practice')}>Go to Practice →</Btn>
+        </Card>
+      ) : filtered.map(err => (
+        <Card key={err.exerciseId} style={{ marginBottom:10 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <Badge color={err.category==='grammar'?'blue':err.category==='naturalness'?'purple':'yellow'} small>{err.category}</Badge>
+              <span style={{ fontSize:13, fontWeight:600, color:'#F0F0F0' }}>{subcategoryLabel(err.subcategory)}</span>
+            </div>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <span style={{ fontSize:11, color:'#555' }}>{err.count||1}× wrong</span>
+              <Btn small variant='danger' onClick={() => resolveError(err.exerciseId)}>Dismiss</Btn>
+            </div>
+          </div>
+          <div className="mono" style={{ fontSize:13, color:'#9A9A9A', marginBottom:8, borderLeft:'2px solid #2A2A2A', paddingLeft:10 }}>{err.question.length>80?err.question.slice(0,80)+'...':err.question}</div>
+          {err.userAnswer && <div style={{ display:'flex', gap:8, marginBottom:8, flexWrap:'wrap' }}><span style={{ fontSize:12, color:'#EF4444', background:'#EF444411', padding:'2px 8px', borderRadius:4 }}>✗ {err.userAnswer}</span><span style={{ fontSize:12, color:'#22C55E', background:'#22C55E11', padding:'2px 8px', borderRadius:4 }}>✓ {err.correctAnswer}</span></div>}
+          <div style={{ fontSize:12, color:'#D0D0D0', lineHeight:1.6 }}>{err.explanation}</div>
+          <div style={{ marginTop:8, fontSize:11, color:'#555' }}>Next review: {isDue(err.nextReviewDate)?'Due now':new Date(err.nextReviewDate).toLocaleDateString()}</div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function Vocabulary({ progress, reviewVocab }) {
+  const [tab, setTab] = useState('review');
+  const [cardIdx, setCardIdx] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [levelFilter, setLevelFilter] = useState('all');
+  const dueWords = VOCAB_DATA.filter(v => { const p = progress.vocabProgress[v.id]; return !p || isDue(p.nextReviewDate); });
+  const word = dueWords.length>0 ? dueWords[cardIdx % dueWords.length] : null;
+  const handleReview = (quality) => { if (word) reviewVocab(word.id, quality); setFlipped(false); setCardIdx(i=>i+1); };
+  const getStatus = id => progress.vocabProgress[id]?.status || 'new';
+  const statusColor = { new:'gray', weak:'yellow', strong:'blue', mastered:'green' };
+  const allWords = levelFilter==='all' ? VOCAB_DATA : VOCAB_DATA.filter(v => v.level===levelFilter);
+  return (
+    <div className="fade-in" style={{ maxWidth:760, margin:'0 auto' }}>
+      <div style={{ marginBottom:20 }}><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Vocabulary</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>{VOCAB_DATA.length} B2–C1 words with spaced repetition.</p></div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, flex:1, minWidth:300 }}>
+          {[{l:'Total',v:VOCAB_DATA.length},{l:'Due',v:dueWords.length},{l:'Strong',v:VOCAB_DATA.filter(v=>['strong','mastered'].includes(getStatus(v.id))).length},{l:'New',v:VOCAB_DATA.filter(v=>getStatus(v.id)==='new').length}].map(s => (
+            <div key={s.l} style={{ background:'#161616', border:'1px solid #2A2A2A', borderRadius:8, padding:'10px 12px', textAlign:'center' }}><div style={{ fontSize:18, fontWeight:700 }}>{s.v}</div><div style={{ fontSize:11, color:'#555', textTransform:'uppercase', letterSpacing:'0.06em' }}>{s.l}</div></div>
+          ))}
+        </div>
+        <div style={{ display:'flex', gap:2, background:'#161616', padding:4, borderRadius:8 }}>
+          {['review','list'].map(t => <button key={t} onClick={() => setTab(t)} style={{ padding:'6px 16px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background:tab===t?'#1E1E1E':'transparent', color:tab===t?'#F0F0F0':'#9A9A9A' }}>{t==='review'?'🃏 Review':'📋 All Words'}</button>)}
+        </div>
+      </div>
+      {tab==='review' && (
+        <div style={{ maxWidth:500, margin:'0 auto' }}>
+          {dueWords.length===0 ? (
+            <Card style={{ textAlign:'center', padding:40 }}><div style={{ fontSize:32, marginBottom:12 }}>✓</div><div style={{ fontSize:15, fontWeight:600, marginBottom:8 }}>All caught up!</div><div style={{ fontSize:13, color:'#9A9A9A' }}>No vocabulary due right now. Check back tomorrow.</div></Card>
+          ) : (
+            <>
+              <div style={{ textAlign:'center', fontSize:12, color:'#555', marginBottom:16 }}>{Math.min(cardIdx+1,dueWords.length)} / {dueWords.length} due</div>
+              <Card style={{ cursor:'pointer', textAlign:'center', padding:40, minHeight:220, display:'flex', flexDirection:'column', justifyContent:'center' }} onClick={() => setFlipped(f=>!f)}>
+                {!flipped ? <><div className="mono" style={{ fontSize:30, fontWeight:700, color:'#F0F0F0', marginBottom:6 }}>{word?.word}</div><div style={{ fontSize:13, color:'#555', marginBottom:16 }}>{word?.phonetic}</div><div style={{ fontSize:12, color:'#3B82F6' }}>Click to reveal →</div></> : (
+                  <div className="fade-in">
+                    <div className="mono" style={{ fontSize:22, fontWeight:700, color:'#F0F0F0', marginBottom:4 }}>{word?.word}</div>
+                    <div style={{ fontSize:13, color:'#9A9A9A', marginBottom:12 }}>{word?.phonetic} · {word?.translation}</div>
+                    <div style={{ fontSize:13, color:'#D0D0D0', marginBottom:14, lineHeight:1.6 }}>{word?.definition}</div>
+                    {word?.examples.map((ex,i) => <div key={i} className="mono" style={{ fontSize:12, color:'#9A9A9A', marginBottom:6, borderLeft:'2px solid #2A2A2A', paddingLeft:10, textAlign:'left' }}>"{ex}"</div>)}
+                    {word?.commonMistake && <div style={{ fontSize:12, color:'#F59E0B', marginTop:10, padding:'6px 10px', background:'#F59E0B0A', borderRadius:6 }}>⚠ {word.commonMistake}</div>}
+                  </div>
+                )}
+              </Card>
+              {flipped && (
+                <div className="fade-in" style={{ display:'flex', gap:8, marginTop:16 }}>
+                  {[{l:'Again',q:0,c:'danger'},{l:'Hard',q:1},{l:'Good',q:2},{l:'Easy',q:3,c:'success'}].map(btn => (
+                    <button key={btn.l} onClick={() => handleReview(btn.q)} style={{ flex:1, padding:'10px 4px', borderRadius:8, border:'1px solid #2A2A2A', background:btn.q===0?'#EF444411':btn.q===3?'#22C55E11':'#161616', color:btn.q===0?'#EF4444':btn.q===3?'#22C55E':'#F0F0F0', fontSize:13, cursor:'pointer', fontWeight:600 }}>{btn.l}</button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {tab==='list' && (
+        <>
+          <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+            {['all','B1','B2','C1'].map(l => <button key={l} onClick={() => setLevelFilter(l)} style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${levelFilter===l?'#3B82F6':'#2A2A2A'}`, background:levelFilter===l?'#3B82F611':'transparent', color:levelFilter===l?'#3B82F6':'#9A9A9A', fontSize:12, cursor:'pointer', fontWeight:600 }}>{l}</button>)}
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:10 }}>
+            {allWords.map(v => (
+              <Card key={v.id} style={{ padding:14 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}><span className="mono" style={{ fontSize:15, fontWeight:700 }}>{v.word}</span><Badge color={statusColor[getStatus(v.id)]} small>{getStatus(v.id)}</Badge></div>
+                <div style={{ fontSize:12, color:'#9A9A9A', marginBottom:4 }}>{v.phonetic}</div>
+                <div style={{ fontSize:12, color:'#D0D0D0' }}>{v.translation}</div>
+                <div style={{ fontSize:10, color:'#555', marginTop:6 }}><Badge color={v.level==='C1'?'purple':'blue'} small>{v.level}</Badge></div>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Theory({ setPage }) {
+  const [expanded, setExpanded] = useState(null);
+  return (
+    <div className="fade-in" style={{ maxWidth:760, margin:'0 auto' }}>
+      <div style={{ marginBottom:24 }}><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Theory Cards</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>Visual, practical grammar — linked directly to exercises.</p></div>
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {THEORY_CARDS.map(card => {
+          const open = expanded===card.id;
+          return (
+            <Card key={card.id} style={{ cursor:'pointer', padding:0, overflow:'hidden' }}>
+              <div onClick={() => setExpanded(open?null:card.id)} style={{ padding:'18px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div><div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:4 }}><span style={{ fontSize:15, fontWeight:700, color:'#F0F0F0' }}>{card.title}</span><Badge color={card.level==='C1'?'purple':'blue'} small>{card.level}</Badge></div><div style={{ fontSize:12, color:'#9A9A9A' }}>{card.subtitle}</div></div>
+                <span style={{ color:'#555', fontSize:18, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>↓</span>
+              </div>
+              {open && (
+                <div className="fade-in" style={{ padding:'0 20px 20px', borderTop:'1px solid #1E1E1E' }}>
+                  <div style={{ padding:'12px 16px', background:'#1E1E1E', borderRadius:8, borderLeft:'2px solid #3B82F6', marginTop:16, marginBottom:16, fontSize:13, color:'#D0D0D0', lineHeight:1.7 }}><strong style={{ color:'#F0F0F0' }}>Rule: </strong>{card.rule}</div>
+                  <div style={{ marginBottom:12 }}>
+                    {card.examples.map((ex,i) => (
+                      <div key={i} style={{ marginBottom:8, padding:'8px 12px', borderRadius:6, background:'#0F0F0F' }}>
+                        {ex.correct && <div className="mono" style={{ color:'#22C55E', fontSize:13 }}>✓ {ex.correct}</div>}
+                        {ex.incorrect && <div className="mono" style={{ color:'#EF4444', fontSize:13 }}>✗ {ex.incorrect}</div>}
+                        {ex.correct2 && <div className="mono" style={{ color:'#22C55E', fontSize:13 }}>✓ {ex.correct2}</div>}
+                        {ex.note && <div style={{ fontSize:11, color:'#555', marginTop:3 }}>→ {ex.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                  {card.trap && <div style={{ padding:'10px 14px', background:'#F59E0B0A', borderRadius:8, borderLeft:'2px solid #F59E0B', marginBottom:16 }}><span style={{ color:'#F59E0B', fontSize:12, fontWeight:700 }}>⚠ TRAP: </span><span style={{ color:'#D0D0D0', fontSize:12 }}>{card.trap}</span></div>}
+                  <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+                    {card.tags.map(t => <Badge key={t} color='gray' small>#{t}</Badge>)}
+                    <Btn small onClick={() => setPage('practice')}>Practice this →</Btn>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RealEnglish({ progress, markInsightSeen }) {
+  const [catFilter, setCatFilter] = useState('all');
+  const [expanded, setExpanded] = useState(null);
+  const cats = ['all', ...new Set(REAL_ENGLISH.map(r => r.category))];
+  const filtered = catFilter==='all' ? REAL_ENGLISH : REAL_ENGLISH.filter(r => r.category===catFilter);
+  const firstUnseen = REAL_ENGLISH.find(r => !progress.seenInsights.includes(r.id));
+  return (
+    <div className="fade-in" style={{ maxWidth:760, margin:'0 auto' }}>
+      <div style={{ marginBottom:24 }}><h2 style={{ fontSize:20, fontWeight:700, margin:0, marginBottom:4 }}>Real English</h2><p style={{ color:'#9A9A9A', fontSize:13, margin:0 }}>What textbooks don't teach you. Colloquial, natural, native.</p></div>
+      {firstUnseen && (
+        <Card style={{ marginBottom:24, borderColor:'#3B82F644', background:'#3B82F608' }}>
+          <div style={{ fontSize:11, color:'#3B82F6', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>✶ Today\'s Insight</div>
+          <div style={{ fontSize:16, fontWeight:700, color:'#F0F0F0', marginBottom:8 }}>{firstUnseen.title}</div>
+          <div style={{ fontSize:13, color:'#D0D0D0', lineHeight:1.7, marginBottom:12 }}>{firstUnseen.content}</div>
+          {firstUnseen.examples.map((ex,i) => <div key={i} className="mono" style={{ fontSize:13, marginBottom:6, padding:'6px 12px', borderRadius:6, background:ex.correct?'#22C55E08':'#EF444408', borderLeft:`2px solid ${ex.correct?'#22C55E':'#EF4444'}`, color:ex.correct?'#22C55E':'#EF4444' }}>{ex.correct?'✓':'✗'} {ex.text}{ex.note&&<span style={{ fontSize:11, color:'#9A9A9A', marginLeft:8, fontFamily:'inherit' }}>— {ex.note}</span>}</div>)}
+          <Btn small style={{ marginTop:12 }} onClick={() => markInsightSeen(firstUnseen.id)}>Mark as seen ✓</Btn>
+        </Card>
+      )}
+      <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
+        {cats.map(c => <button key={c} onClick={() => setCatFilter(c)} style={{ padding:'5px 12px', borderRadius:20, border:`1px solid ${catFilter===c?'#3B82F6':'#2A2A2A'}`, background:catFilter===c?'#3B82F611':'transparent', color:catFilter===c?'#3B82F6':'#9A9A9A', fontSize:12, cursor:'pointer', fontWeight:600, textTransform:'capitalize' }}>{c}</button>)}
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {filtered.map(insight => {
+          const seen = progress.seenInsights.includes(insight.id);
+          const open = expanded===insight.id;
+          return (
+            <Card key={insight.id} style={{ opacity:seen?0.6:1, cursor:'pointer', padding:0, overflow:'hidden' }}>
+              <div onClick={() => setExpanded(open?null:insight.id)} style={{ padding:'16px 20px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div><div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:2 }}><span style={{ fontSize:14, fontWeight:600, color:'#F0F0F0' }}>{insight.title}</span>{seen&&<Badge color='green' small>seen</Badge>}<Badge color='gray' small>{insight.category}</Badge></div>{!open&&<div style={{ fontSize:12, color:'#555' }}>{insight.content.slice(0,60)}...</div>}</div>
+                <span style={{ color:'#555', fontSize:16, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none' }}>↓</span>
+              </div>
+              {open && (
+                <div className="fade-in" style={{ padding:'0 20px 20px', borderTop:'1px solid #1E1E1E' }}>
+                  <div style={{ fontSize:13, color:'#D0D0D0', lineHeight:1.7, margin:'16px 0 14px' }}>{insight.content}</div>
+                  {insight.examples.map((ex,i) => <div key={i} className="mono" style={{ fontSize:13, marginBottom:8, padding:'8px 12px', borderRadius:6, background:ex.correct?'#22C55E08':'#EF444408', borderLeft:`2px solid ${ex.correct?'#22C55E':'#EF4444'}`, color:ex.correct?'#22C55E':'#EF4444' }}>{ex.correct?'✓':'✗'} {ex.text}{ex.note&&<span style={{ fontSize:11, color:'#9A9A9A', marginLeft:8, fontFamily:'inherit' }}>— {ex.note}</span>}</div>)}
+                  {!seen && <Btn small style={{ marginTop:12 }} onClick={() => markInsightSeen(insight.id)}>Mark as seen ✓</Btn>}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [page, setPage] = useState('dashboard');
+  const { progress, updateStreak, addXP, addError, resolveError, markExerciseDone, reviewVocab, updatePhrasal, markInsightSeen, getDueErrors, getWeakPoints } = useProgress();
+  useEffect(() => { updateStreak(); }, []);
+  const errorCount = progress.errorProfile.filter(e => !e.resolved).length;
+  const pages = {
+    dashboard: <Dashboard progress={progress} setPage={setPage} getWeakPoints={getWeakPoints} getDueErrors={getDueErrors} />,
+    practice: <Practice progress={progress} addError={addError} addXP={addXP} markExerciseDone={markExerciseDone} getDueErrors={getDueErrors} setPage={setPage} />,
+    phrasal: <PhrasalVerbs progress={progress} updatePhrasal={updatePhrasal} addXP={addXP} />,
+    mistakes: <Mistakes progress={progress} resolveError={resolveError} setPage={setPage} />,
+    vocab: <Vocabulary progress={progress} reviewVocab={reviewVocab} />,
+    theory: <Theory setPage={setPage} />,
+    real: <RealEnglish progress={progress} markInsightSeen={markInsightSeen} />,
+  };
+  return (
+    <div style={{ display:'flex', minHeight:'100vh', background:'#0F0F0F' }}>
+      <Sidebar page={page} setPage={setPage} progress={progress} errorCount={errorCount} />
+      <main style={{ flex:1, padding:'32px 40px', overflowY:'auto', minHeight:'100vh' }}>
+        {pages[page]}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
